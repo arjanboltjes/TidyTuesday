@@ -16,12 +16,11 @@ output:
      highlight: tango
 ---
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
-```
+
 
 # Packages
-```{r packages}
+
+```r
 # library(ggpubr)
 library(directlabels)
 library(colorRamps)
@@ -29,14 +28,51 @@ library(grid)
 library(tidyverse)
 ```
 
+```
+## ── Attaching packages ─────────────────────────────────────── tidyverse 1.3.0 ──
+```
+
+```
+## ✓ ggplot2 3.3.0     ✓ purrr   0.3.4
+## ✓ tibble  3.0.4     ✓ dplyr   1.0.2
+## ✓ tidyr   1.1.0     ✓ stringr 1.4.0
+## ✓ readr   1.3.1     ✓ forcats 0.5.0
+```
+
+```
+## ── Conflicts ────────────────────────────────────────── tidyverse_conflicts() ──
+## x dplyr::filter() masks stats::filter()
+## x dplyr::lag()    masks stats::lag()
+```
+
 # Import data
-```{r import_post}
+
+```r
 netflix_titles <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2021/2021-04-20/netflix_titles.csv')
+```
+
+```
+## Parsed with column specification:
+## cols(
+##   show_id = col_character(),
+##   type = col_character(),
+##   title = col_character(),
+##   director = col_character(),
+##   cast = col_character(),
+##   country = col_character(),
+##   date_added = col_character(),
+##   release_year = col_double(),
+##   rating = col_character(),
+##   duration = col_character(),
+##   listed_in = col_character(),
+##   description = col_character()
+## )
 ```
 
 # Turn df into wide form
 Put countries from movie/show with multiple countries in their own variable.  
-```{r year_country}
+
+```r
 year_country <- netflix_titles %>% 
   drop_na(country, date_added) %>% 
   separate(country, c("country1", "country2", "country3", "country4", "country5", "country6", "country7", "country8", "country9", "country10", "country11", "country12"), sep = ", ") %>% 
@@ -44,11 +80,36 @@ year_country <- netflix_titles %>%
   select(year_added, starts_with("country"), show_id, type) %>% 
   print()
 ```
+
+```
+## Warning: Expected 12 pieces. Missing pieces filled with `NA` in 7270 rows [1, 2,
+## 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, ...].
+```
+
+```
+## # A tibble: 7,271 x 15
+##    year_added country1 country2 country3 country4 country5 country6 country7
+##    <chr>      <chr>    <chr>    <chr>    <chr>    <chr>    <chr>    <chr>   
+##  1 2020       Brazil   <NA>     <NA>     <NA>     <NA>     <NA>     <NA>    
+##  2 2016       Mexico   <NA>     <NA>     <NA>     <NA>     <NA>     <NA>    
+##  3 2018       Singapo… <NA>     <NA>     <NA>     <NA>     <NA>     <NA>    
+##  4 2017       United … <NA>     <NA>     <NA>     <NA>     <NA>     <NA>    
+##  5 2020       United … <NA>     <NA>     <NA>     <NA>     <NA>     <NA>    
+##  6 2017       Turkey   <NA>     <NA>     <NA>     <NA>     <NA>     <NA>    
+##  7 2020       Egypt    <NA>     <NA>     <NA>     <NA>     <NA>     <NA>    
+##  8 2019       United … <NA>     <NA>     <NA>     <NA>     <NA>     <NA>    
+##  9 2019       India    <NA>     <NA>     <NA>     <NA>     <NA>     <NA>    
+## 10 2017       India    <NA>     <NA>     <NA>     <NA>     <NA>     <NA>    
+## # … with 7,261 more rows, and 7 more variables: country8 <chr>, country9 <chr>,
+## #   country10 <chr>, country11 <chr>, country12 <chr>, show_id <chr>,
+## #   type <chr>
+```
 Although I don't use show_id or type for the main figure, I kept them anyway, to be able to for instance split up the figure based on movie/TV show (`type`).  
 
 # Turn df into long form
 Every country entry gets its own row. This does mean that movies/shows with multiple production countries impact the data more, and therefore the final figure. Since I mainly focused on the final figure and how to get to it, I mostly ignored this data bias.  
-```{r year_country_long}
+
+```r
 year_country_long <- year_country %>% 
   pivot_longer(cols = starts_with("country"),
                names_to = "country_n",
@@ -58,14 +119,45 @@ year_country_long <- year_country %>%
   mutate_at(vars(year_added, country, type), list(as.factor)) %>% 
   arrange(year_added, country) %>% 
   print()
+```
 
+```
+## # A tibble: 9,054 x 4
+##    year_added show_id type    country      
+##    <fct>      <chr>   <fct>   <fct>        
+##  1 2008       s1766   TV Show United States
+##  2 2008       s7114   Movie   United States
+##  3 2009       s3249   Movie   Denmark      
+##  4 2009       s5766   Movie   United States
+##  5 2010       s3841   Movie   United States
+##  6 2011       s2042   Movie   France       
+##  7 2011       s2042   Movie   Mexico       
+##  8 2011       s2042   Movie   Spain        
+##  9 2011       s233    Movie   United States
+## 10 2011       s309    Movie   United States
+## # … with 9,044 more rows
+```
+
+```r
 summary(year_country_long)
+```
+
+```
+##    year_added     show_id               type                country    
+##  2019   :2423   Length:9054        Movie  :6609   United States :3290  
+##  2020   :2354   Class :character   TV Show:2445   India         : 990  
+##  2018   :1958   Mode  :character                  United Kingdom: 721  
+##  2017   :1451                                     Canada        : 412  
+##  2016   : 553                                     France        : 349  
+##  2021   : 134                                     Japan         : 286  
+##  (Other): 181                                     (Other)       :3006
 ```
 
 # Prepare proportional stacked area chart
 To create the proportional stacked area chart, I needed percentages per country. To get those, I first created a variable with counts per country, then cumulative counts, and then percentages.  
 Since there were 121 countries - way too many for the plot I had in mind - I lumped the majority of the countries into a variable called `Other`, only keeping the top 15 countries.  
-```{r prop_area, fig.heigt = 10, fig.width = 14}
+
+```r
 # count per country per year
 year_country_count <- year_country_long  %>%
   # group_by(year_added) %>%
@@ -94,7 +186,8 @@ year_country_count <- year_country_count %>%
 ```
 
 To get the direct labels on the right hand side of the plot at the right vertical location, I created this `label_loc` df.  
-```{r label_loc}
+
+```r
 label_loc <- year_country_count %>% 
    filter(year_added == max(year_added)) %>% 
    arrange(desc(country)) %>% 
@@ -104,9 +197,32 @@ label_loc <- year_country_count %>%
    print()
 ```
 
+```
+## # A tibble: 16 x 7
+##    country        year_added     n cum_n percentage cumperc label_loc
+##    <fct>               <dbl> <int> <int>      <dbl>   <dbl>     <dbl>
+##  1 Australia            2021     1   143       1.58   100.      99.2 
+##  2 Canada               2021     8   412       4.55    98.4     96.1 
+##  3 China                2021     0   147       1.62    93.9     93.0 
+##  4 Egypt                2021     0   110       1.21    92.2     91.6 
+##  5 France               2021     7   349       3.85    91.0     89.1 
+##  6 Germany              2021     4   199       2.2     87.2     86.1 
+##  7 Hong Kong            2021     2   102       1.13    85.0     84.4 
+##  8 India                2021    13   990      10.9     83.8     78.4 
+##  9 Japan                2021     1   286       3.16    72.9     71.3 
+## 10 Mexico               2021     2   154       1.7     69.8     68.9 
+## 11 South Korea          2021     1   212       2.34    68.1     66.9 
+## 12 Spain                2021     3   215       2.37    65.7     64.5 
+## 13 Turkey               2021     1   108       1.19    63.3     62.7 
+## 14 United Kingdom       2021     8   721       7.96    62.2     58.2 
+## 15 United States        2021    74  3290      36.3     54.2     36.0 
+## 16 Other                2021     9  1616      17.8     17.8      8.93
+```
+
 # Create proportional stacked area chart
 This is the final bit of code to create the main figure, and all customization.  
-```{r plot_prop_area, fig.height = 10, fig.width = 15}
+
+```r
 # Plot
 p1 <- year_country_count %>% 
   ggplot(aes(x = year_added, y = percentage, fill = country)) + 
@@ -146,20 +262,32 @@ gt1$layout$clip[gt1$layout$name == "panel"] <- "off"
 grid.draw(gt1)
 ```
 
-```{r plot_prop_area2, fig.height = 10, fig.width = 15}
+![](netflix_titles_files/figure-html/plot_prop_area-1.png)<!-- -->
+
+
+```r
 plot(gt1)
 ```
 
+![](netflix_titles_files/figure-html/plot_prop_area2-1.png)<!-- -->
+
 ## Save plot
-```{r save_plot}
+
+```r
 png(filename = "netflix_figure.png", width = 1440, height = 960)
 plot(gt1)
 dev.off()
 ```
 
+```
+## png 
+##   2
+```
+
 # Create proportional stacked area charts, faceted based on Movie/TV show
 These plots are without all of the customization of the main figure.  
-```{r prop_area_facet, fig.height = 8, fig.width = 14}
+
+```r
 # create percentages per country
 year_country_count <- year_country_long  %>%
   # group_by(year_added) %>%
@@ -196,5 +324,7 @@ year_country_count %>%
   labs(y = "Percentage") +
   facet_wrap(vars(type))
 ```
+
+![](netflix_titles_files/figure-html/prop_area_facet-1.png)<!-- -->
 
 
