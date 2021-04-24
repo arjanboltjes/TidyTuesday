@@ -1,0 +1,199 @@
+---
+title: "#TidyTuesday 2021 Week 17 Netflix titles"
+author: "Arjan"
+date: "4/20/2021"
+output: 
+  html_document:
+     code_folding: show
+     df_print: paged
+     toc: true
+     toc_float:
+      collapsed: no
+      smooth_scroll: yes
+     number_sections: true
+     theme: darkly
+     highlight: tango
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Packages
+```{r packages}
+# library(ggpubr)
+library(directlabels)
+library(colorRamps)
+library(grid)
+library(tidyverse)
+```
+
+# Import data
+```{r import_post}
+netflix_titles <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2021/2021-04-20/netflix_titles.csv')
+```
+
+# Turn df into wide form
+Put countries from movie/show with multiple countries in their own variable.  
+```{r year_country}
+year_country <- netflix_titles %>% 
+  drop_na(country, date_added) %>% 
+  separate(country, c("country1", "country2", "country3", "country4", "country5", "country6", "country7", "country8", "country9", "country10", "country11", "country12"), sep = ", ") %>% 
+  separate(date_added, c("date_added", "year_added"), sep = ", ") %>% 
+  select(year_added, starts_with("country"), show_id, type) %>% 
+  print()
+```
+Although I don't use show_id or type for the main figure, I kept them anyway, to be able to for instance split up the figure based on movie/TV show (`type`).  
+
+# Turn df into long form
+Every country entry gets its own row. This does mean that movies/shows with multiple production countries impact the data more, and therefore the final figure. Since I mainly focused on the final figure and how to get to it, I mostly ignored this data bias.  
+```{r year_country_long}
+year_country_long <- year_country %>% 
+  pivot_longer(cols = starts_with("country"),
+               names_to = "country_n",
+               values_to = "country") %>% 
+  drop_na(country) %>% 
+  select(-country_n) %>% 
+  mutate_at(vars(year_added, country, type), list(as.factor)) %>% 
+  arrange(year_added, country) %>% 
+  print()
+
+summary(year_country_long)
+```
+
+# Prepare proportional stacked area chart
+To create the proportional stacked area chart, I needed percentages per country. To get those, I first created a variable with counts per country, then cumulative counts, and then percentages.  
+Since there were 121 countries - way too many for the plot I had in mind - I lumped the majority of the countries into a variable called `Other`, only keeping the top 15 countries.  
+```{r prop_area, fig.heigt = 10, fig.width = 14}
+# count per country per year
+year_country_count <- year_country_long  %>%
+  # group_by(year_added) %>%
+  mutate(country = fct_lump(country, 15)) %>%
+  group_by(year_added) %>%
+  count(country)
+
+# make sure every country has a row for each year
+year_country_count <- year_country_count %>% 
+  pivot_wider(names_from = year_added, values_from = n) %>% 
+  replace(is.na(.), 0) %>% 
+  pivot_longer(cols = -country, names_to = "year_added", values_to = "n") %>% 
+  mutate_at(vars(year_added), list(as.numeric)) %>% 
+  arrange(year_added)
+
+# add cumulative counts per year per country
+year_country_count <- year_country_count %>% 
+  group_by(country) %>%
+  mutate("cum_n" = cumsum(n))
+
+# add percentage per year per country
+year_country_count <- year_country_count %>% 
+  group_by(year_added) %>%
+  mutate(percentage = round(cum_n / sum(cum_n) *100, 2)) %>% 
+  ungroup()
+```
+
+To get the direct labels on the right hand side of the plot at the right vertical location, I created this `label_loc` df.  
+```{r label_loc}
+label_loc <- year_country_count %>% 
+   filter(year_added == max(year_added)) %>% 
+   arrange(desc(country)) %>% 
+   mutate(cumperc = cumsum(percentage)) %>% 
+   mutate(label_loc = cumperc - (0.5 * percentage) ) %>% 
+   arrange(country) %>% 
+   print()
+```
+
+# Create proportional stacked area chart
+This is the final bit of code to create the main figure, and all customization.  
+```{r plot_prop_area, fig.height = 10, fig.width = 15}
+# Plot
+p1 <- year_country_count %>% 
+  ggplot(aes(x = year_added, y = percentage, fill = country)) + 
+  # scale_fill_manual(values = matlab.like2(16) ) + # original colors I wanted to use - did not work on white or black background
+  scale_fill_manual(values = terrain.colors(16) ) +
+  geom_area(alpha = 1 , size = 1, colour = "black") +
+  theme_minimal() +
+  # edit the look of the plot
+  theme(panel.grid.major = element_blank(), # remove grid
+        panel.grid.minor = element_blank(), # remove grid
+        plot.background = element_rect(fill = "black"),
+        axis.text = element_text(color = "white", size = 12, family = "sans"),
+        title = element_text(colour = "white", size = 14),
+        plot.title = element_text(size = 20, family = "sans"), # change plot title
+        axis.title.x = element_text(margin = margin(15, 0, 0, 0) ), # increase margin above x-axis title
+        plot.margin = unit(c(1, 5, 1, 1), "cm"), # change canvas margin on the right
+        axis.text.y = element_text(hjust = 1, 
+                                   margin = margin(0, -30, 0, 0)), # change margin to the right of axis text - move closer to plot
+        axis.text.x = element_text(size = 12, 
+                                   angle = 45,  # change orientation of x-axis labels
+                                   hjust = 1, 
+                                   vjust = 1, 
+                                   margin = margin(-15, 0, 0, 0))) + # change margin above axis text - move closer to plot
+  scale_x_continuous("Year added", breaks = unique(year_country_count$year_added)) + # add x-axis title and label every year
+  labs(title = "Country where NETFLIX movie/show was produced",
+       subtitle = "Progression, over the years",
+       y = "Percentage of total countries",
+       caption = "based on data from Kaggle, provided via TidyTuesday, 2021 week 17") +
+  # add direct labels to the right of the plot
+  geom_dl(data = label_loc, aes(label = country, y = label_loc, x = year_added + 0.1, colour = country), position = "identity", method = list("last.points", cex = 0.75)) +
+  scale_color_manual(values = terrain.colors(16) ) + # give direct labels same colours as plot area
+  guides(fill = FALSE, colour = FALSE) # turn off legend
+
+# Code to turn off clipping
+gt1 <- ggplotGrob(p1)
+gt1$layout$clip[gt1$layout$name == "panel"] <- "off"
+grid.draw(gt1)
+```
+
+```{r plot_prop_area2, fig.height = 10, fig.width = 15}
+plot(gt1)
+```
+
+## Save plot
+```{r save_plot}
+png(filename = "netflix_figure.png", width = 1440, height = 960)
+plot(gt1)
+dev.off()
+```
+
+# Create proportional stacked area charts, faceted based on Movie/TV show
+These plots are without all of the customization of the main figure.  
+```{r prop_area_facet, fig.height = 8, fig.width = 14}
+# create percentages per country
+year_country_count <- year_country_long  %>%
+  # group_by(year_added) %>%
+  mutate(country = fct_lump(country, 15)) %>% 
+  group_by(year_added, type) %>%
+  count(country)
+
+year_country_count <- year_country_count %>% 
+  pivot_wider(names_from = year_added, values_from = n) %>% 
+  replace(is.na(.), 0) %>% 
+  pivot_longer(cols = -c(country, type), names_to = "year_added", values_to = "n") %>% 
+  mutate_at(vars(year_added), list(as.numeric)) %>% 
+  arrange(year_added)
+
+year_country_count <- year_country_count %>% 
+  group_by(type, country) %>%
+  mutate("cum_n" = cumsum(n))
+
+year_country_count <- year_country_count %>% 
+  group_by(type, year_added) %>%
+  mutate(percentage = round(cum_n / sum(cum_n) *100, 2)) %>% 
+  ungroup()
+
+# Plot
+year_country_count %>% 
+  ggplot(aes(x = year_added, y = percentage, fill = country)) + 
+  geom_area(alpha = 0.6 , size = 1, colour = "black") +
+  theme_minimal() +
+  # Remove panel grid lines
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.text.x = element_text(size = 10, angle = 45, hjust = 1, vjust = 1) ) + # change orientation of x-axis labels
+  scale_x_continuous("Year added", breaks = unique(year_country_count$year_added)) +
+  labs(y = "Percentage") +
+  facet_wrap(vars(type))
+```
+
+
